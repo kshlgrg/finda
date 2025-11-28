@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+venv/
+.DS_Store
+.vscode/
+tests/test_report.md
+tests/deep_test_report.md
