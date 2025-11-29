@@ -4,16 +4,10 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
-# Add parent of 'finda' directory to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+# Ensure we can import the finda package
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 
-try:
-    from finda.ohlcv_fetcher import fetch_unified_ohclv
-    from finda.tick_fetcher import fetch_unified_tick
-except ImportError:
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-    from ohlcv_fetcher import fetch_unified_ohclv
-    from tick_fetcher import fetch_unified_tick
+from finda import fetch_unified_ohclv, fetch_unified_tick
 
 # Load env
 env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../.env'))
@@ -27,18 +21,16 @@ print(f"Loaded Keys - Key: {'Found' if ALPACA_API_KEY else 'Missing'}")
 def run_deep_tests():
     print("Starting Deep Unified Tests...")
     
-    # Test Cases
-    # 1. Standard Timeframes (1h, 1d)
-    # 2. Crypto via Alpaca (BTC/USD)
-    # 3. Stock via Alpaca (AAPL)
-    # 4. Forex via Dukascopy (EUR/USD)
-    
     tests = [
-        {"name": "Stock OHLCV (Alpaca/Unified)", "symbol": "AAPL", "tf": "1d", "days": 5},
-        {"name": "Crypto OHLCV (Alpaca/Unified)", "symbol": "BTC/USD", "tf": "1h", "days": 1},
-        {"name": "Forex OHLCV (Dukascopy/Unified)", "symbol": "EUR/USD", "tf": "1h", "days": 2},
-        {"name": "Crypto Tick (Binance/Unified)", "symbol": "BTC/USDT", "tf": "tick", "days": 0.001},
-        {"name": "Forex Tick (Dukascopy/Unified)", "symbol": "GBP/USD", "tf": "tick", "days": 0.01},
+        # Stock (Alpaca)
+        {"name": "Stock OHLCV (AAPL)", "symbol": "AAPL", "tf": "1d", "days": 5},
+        # Crypto (Alpaca or Binance fallback)
+        {"name": "Crypto OHLCV (BTC/USD)", "symbol": "BTC/USD", "tf": "1h", "days": 1},
+        # Forex (Dukascopy)
+        {"name": "Forex OHLCV (EUR/USD)", "symbol": "EUR/USD", "tf": "1h", "days": 2},
+        # Ticks
+        {"name": "Crypto Tick (BTC/USDT)", "symbol": "BTC/USDT", "tf": "tick", "days": 0.001}, # ~1.5 mins
+        {"name": "Forex Tick (GBP/USD)", "symbol": "GBP/USD", "tf": "tick", "days": 0.001},
     ]
     
     results = []
@@ -49,7 +41,7 @@ def run_deep_tests():
         tf = t['tf']
         days = t['days']
         
-        # Use UTC for Alpaca compatibility
+        # Use UTC
         end_dt = datetime.now(timezone.utc) - timedelta(minutes=20)
         start_dt = end_dt - timedelta(days=days)
         
@@ -64,7 +56,13 @@ def run_deep_tests():
                 prov, res = fetch_unified_tick(symbol, tf, start_str, end_str, ALPACA_API_KEY, ALPACA_SECRET_KEY)
                 if res:
                     b, a, bv, av, rv, times = res
-                    details = f"Provider: {prov}, Ticks: {len(times)}"
+                    # Verify no None values in critical fields (bid/ask)
+                    if any(x is None for x in b) or any(x is None for x in a):
+                         status = "WARN"
+                         details = "Returned None in bid/ask list"
+
+                    details += f"Provider: {prov}, Ticks: {len(times)}"
+
                     if len(times) == 0:
                         status = "FAIL"
                         details = "Empty tick list"
@@ -87,17 +85,19 @@ def run_deep_tests():
                     
         except Exception as e:
             status = "FAIL"
-            details = str(e)
+            details = f"Exception: {str(e)}"
             
         print(f"  -> {status} ({details})")
         results.append({"test": t['name'], "status": status, "details": details})
 
     # Generate Report
-    with open(os.path.join(os.path.dirname(__file__), "deep_test_report.md"), "w") as f:
+    report_path = os.path.join(os.path.dirname(__file__), "deep_test_report.md")
+    with open(report_path, "w") as f:
         f.write("# Deep Unified Test Report\n\n")
         f.write("| Test | Status | Details |\n|---|---|---|\n")
         for r in results:
             f.write(f"| {r['test']} | {r['status']} | {r['details']} |\n")
+    print(f"\nReport generated at {report_path}")
 
 if __name__ == "__main__":
     run_deep_tests()
